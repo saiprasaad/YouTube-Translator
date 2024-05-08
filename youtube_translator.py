@@ -48,7 +48,7 @@ def main():
         original_text = result["text"]
 
         st.write("Translating text...")
-        openai.api_key="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"
+        openai.api_key="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"
         prompt=f"translate this full text {language_options[target_language]}: {original_text}"
 
         response=openai.completions.create(
