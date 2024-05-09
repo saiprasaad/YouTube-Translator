@@ -3,4 +3,4 @@ moviepy
 gtts
 openai
 streamlit
-whisper
+openai-whisper
