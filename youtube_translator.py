@@ -17,6 +17,8 @@ def main():
     for file in existing_files:
         if os.path.exists(file):
             os.remove(file)
+
+    openai_api_key = os.environ.get("OPENAI_API_KEY")
     st.title("YouTube Translator")
 
     st.write("Enter YouTube video link:")
@@ -48,7 +50,7 @@ def main():
         original_text = result["text"]
 
         st.write("Translating text...")
-        openai.api_key="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"
+        openai.api_key=openai_api_key
         prompt=f"translate this full text {language_options[target_language]}: {original_text}"
 
         response=openai.completions.create(
