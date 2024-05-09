@@ -4,7 +4,6 @@ from moviepy.editor import VideoFileClip, AudioFileClip
 from gtts import gTTS
 import os
 import openai
-import shutil
 import whisper
 
 language_options = {
