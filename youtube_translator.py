@@ -4,6 +4,7 @@ from moviepy.editor import VideoFileClip, AudioFileClip
 from gtts import gTTS
 import io
 import openai
+import os
 import whisper
 import tempfile
 
