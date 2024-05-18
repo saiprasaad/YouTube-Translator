@@ -2,21 +2,18 @@ import streamlit as st
 from pytube import YouTube
 from moviepy.editor import VideoFileClip, AudioFileClip
 from gtts import gTTS
-import os
+import io
 import openai
 import whisper
+import tempfile
 
+# Language options for translation
 language_options = {
     "Spanish": "es",
     "German": "de"
 }
 
 def main():
-    existing_files = ["./audio.mp3", "./video.mp4", "./translated_audio.mp3", "./translated_video.mp4"]
-    for file in existing_files:
-        if os.path.exists(file):
-            os.remove(file)
-
     openai_api_key = os.environ.get("OPENAI_API_KEY")
     st.title("YouTube Translator")
 
@@ -28,57 +25,69 @@ def main():
         st.write("Downloading video...")
         yt = YouTube(link)
         video_stream = yt.streams.filter(progressive=True, file_extension='mp4').order_by('resolution').desc().first()
-        output_video = video_stream.download(output_path=".")
+        
+        # Download video to buffer
+        video_buffer = io.BytesIO()
+        video_stream.stream_to_buffer(video_buffer)
+        video_buffer.seek(0)
         st.write("Video downloaded successfully!")
 
-        base, ext = os.path.splitext(output_video)
-        new_file = os.path.join(os.path.dirname(output_video), "video.mp4")
-        os.rename(output_video, new_file)
-        st.write("Video renamed to 'video.mp4'")
+        st.write("Extracting audio from video...")
+        # Write video buffer to a temporary file
+        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as temp_video_file:
+            temp_video_file.write(video_buffer.getvalue())
+            temp_video_file_name = temp_video_file.name
 
-        output_video_path = "./video.mp4"
-        output_audio_path = "./audio.mp3"
+        # Process the video file
+        video_clip = VideoFileClip(temp_video_file_name)
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_audio_file:
+            video_clip.audio.write_audiofile(temp_audio_file.name, codec='pcm_s16le')
+            temp_audio_file_name = temp_audio_file.name
+        video_clip.close()
 
-        clip = VideoFileClip(output_video_path)
-        clip.audio.write_audiofile(output_audio_path)
-        clip.close()
-
-        st.write("Transcribing audio...")
+        # Load audio file for transcription
         model = whisper.load_model("base")
-        result = model.transcribe("audio.mp3")
+        result = model.transcribe(temp_audio_file_name)
         original_text = result["text"]
 
         st.write("Translating text...")
-        openai.api_key=openai_api_key
-        prompt=f"translate this full text {language_options[target_language]}: {original_text}"
+        openai.api_key = openai_api_key
+        prompt = f"translate this full text to {language_options[target_language]}: {original_text}"
 
-        response=openai.completions.create(
-        model = "gpt-3.5-turbo-instruct",
-        prompt=prompt,
-        max_tokens=3800,
-        temperature=0.5
+        response = openai.completions.create(
+            model="gpt-3.5-turbo-instruct",
+            prompt=prompt,
+            max_tokens=3800,
+            temperature=0.5
         )
-        print(response)
 
-        translated_text=response.choices[0].text
+        translated_text = response.choices[0].text.strip()
 
         st.write("Generating translated audio...")
-        translated_audio = gTTS(text=translated_text, lang="es", slow=False)
-        translated_audio.save("./translated_audio.mp3")
-
-        translated_audio_path = "./translated_audio.mp3"
-        translated_video_path = "./translated_video.mp4"
+        translated_audio = gTTS(text=translated_text, lang=language_options[target_language], slow=False)
+        
+        # Save translated audio to a temporary file
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as temp_translated_audio_file:
+            translated_audio.save(temp_translated_audio_file.name)
+            temp_translated_audio_file_name = temp_translated_audio_file.name
 
         st.write(f"Generating translated video in {target_language}...")
-        video_clip = VideoFileClip(output_video_path)
-        audio_clip = AudioFileClip(translated_audio_path)
-        video_clip = video_clip.set_audio(audio_clip)
-        video_clip.write_videofile(translated_video_path, codec="libx264", audio_codec="aac")
+        # Load translated audio from the temporary file
+        translated_audio_clip = AudioFileClip(temp_translated_audio_file_name)
+
+        video_clip = VideoFileClip(temp_video_file_name)
+        video_clip = video_clip.set_audio(translated_audio_clip)
+
+        final_video_buffer = io.BytesIO()
+        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as final_video_file:
+            video_clip.write_videofile(final_video_file.name, codec="libx264", audio_codec="aac")
+            final_video_file.seek(0)
+            final_video_buffer.write(final_video_file.read())
+        final_video_buffer.seek(0)
 
         st.write("Process completed!")
-
         st.write(f"Displaying generated video in {target_language}...")
-        st.video(translated_video_path)
+        st.video(final_video_buffer.getvalue())
 
 if __name__ == "__main__":
     main()
